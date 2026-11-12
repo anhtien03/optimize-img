@@ -3,6 +3,92 @@
  */
 
 /**
+ * Common Vietnamese and English domain keywords for auto-segmenting conjoined words
+ * e.g. "temnhan" => "tem-nhan", "innamecard" => "in-name-card"
+ */
+const COMMON_SEO_WORDS = new Set([
+  'catalogue', 'catalog', 'brochure', 'standee', 'voucher', 'sticker', 'backdrop',
+  'decal', 'innhanh', 'thietke', 'giare',
+  'name', 'card', 'danh', 'thiep', 'tem', 'nhan', 'mac', 'hop', 'giay', 'tui', 'vai',
+  'bien', 'bang', 'hieu', 'poster', 'banner', 'menu', 'so', 'tay', 'lich', 'tet',
+  'thiep', 'cuoi', 'hoa', 'don', 'bien', 'lai', 've', 'moi',
+  'to', 'roi', 'gap', 'kep', 'file', 'folder',
+  'in', 'an', 'thiet', 'ke', 'gia', 're', 'dep', 'chat', 'luong', 'cao',
+  'lay', 'ngay', 'nhanh', 'tphcm', 'hanoi', 'danang', 'saigon',
+  'mau', 'san', 'pham', 'logo', 'icon', 'hinh', 'anh',
+  'ep', 'kim', 'dap', 'noi', 'can', 'mang', 'bong', 'mo',
+]);
+
+/**
+ * Smart word segmenter: splits a concatenated token into separated words
+ * e.g. "temnhan" => "tem-nhan", "innamecard" => "in-name-card"
+ */
+export function segmentCompoundWords(slug: string): string {
+  const parts = slug.split('-');
+
+  const segmentedParts = parts.map((part) => {
+    // If the part is already short (<= 3 chars) or contains numbers, leave it
+    if (part.length <= 3 || /\d/.test(part)) return part;
+
+    // If the part is already a single complete dictionary word, don't split
+    if (COMMON_SEO_WORDS.has(part)) return part;
+
+    const tokens: string[] = [];
+    let i = 0;
+    let anyMatch = false;
+
+    while (i < part.length) {
+      let matched: string | null = null;
+      const maxLen = Math.min(12, part.length - i);
+
+      for (let len = maxLen; len >= 2; len--) {
+        const sub = part.substring(i, i + len);
+        if (COMMON_SEO_WORDS.has(sub)) {
+          matched = sub;
+          break;
+        }
+      }
+
+      if (matched) {
+        tokens.push(matched);
+        i += matched.length;
+        anyMatch = true;
+      } else {
+        tokens.push(part[i]);
+        i++;
+      }
+    }
+
+    // Only join if we found multiple recognized words
+    if (anyMatch && tokens.length > 1) {
+      const cleanTokens: string[] = [];
+      let tempChars = '';
+
+      for (const t of tokens) {
+        if (t.length === 1) {
+          tempChars += t;
+        } else {
+          if (tempChars) {
+            cleanTokens.push(tempChars);
+            tempChars = '';
+          }
+          cleanTokens.push(t);
+        }
+      }
+      if (tempChars) {
+        cleanTokens.push(tempChars);
+      }
+
+      return cleanTokens.join('-');
+    }
+
+    return part;
+  });
+
+  return segmentedParts.join('-');
+}
+
+/**
  * Remove Vietnamese accents / diacritics and convert to clean ASCII
  */
 export function removeVietnameseTones(str: string): string {
@@ -21,29 +107,41 @@ export function removeVietnameseTones(str: string): string {
 /**
  * Convert any string or file name into a Google Image SEO-friendly slug
  * Rules:
- * 1. Remove Vietnamese accents and special characters
- * 2. Lowercase all letters
- * 3. Replace spaces, underscores, dots, and special characters with hyphens '-'
- * 4. Merge duplicate consecutive hyphens '--' into '-'
- * 5. Trim leading and trailing hyphens
+ * 1. Split CamelCase (e.g. "temNhan" => "tem-Nhan")
+ * 2. Remove Vietnamese accents and special characters
+ * 3. Lowercase all letters
+ * 4. Replace spaces, dots, commas, semicolons, and special characters with hyphens '-'
+ * 5. Merge duplicate consecutive hyphens '--' into single '-'
+ * 6. Trim leading and trailing hyphens
+ * 7. Smart word segmentation for conjoined lowercase words (e.g. "temnhan" => "tem-nhan")
  * 
  * Examples:
+ * - "tem...nhan,,dep..;moi!" => "tem-nhan-dep-moi"
+ * - "temnhan" => "tem-nhan"
+ * - "temNhanDecal" => "tem-nhan-decal"
  * - "Báo Giá Thiết Kế Name Card (Đẹp Nhất) 2026.png" => "bao-gia-thiet-ke-name-card-dep-nhat-2026"
- * - "Ảnh-chụp__Sản phẩm mới #01!" => "anh-chup-san-pham-moi-01"
  */
 export function toSeoSlug(text: string): string {
   if (!text) return '';
   const withoutExt = getBaseName(text);
-  const cleanAscii = removeVietnameseTones(withoutExt).toLowerCase();
 
-  // Replace all non-alphanumeric characters with hyphens
+  // 1. Separate CamelCase / PascalCase words
+  const camelSeparated = withoutExt.replace(/([a-z0-9])([A-Z])/g, '$1-$2');
+
+  // 2. Remove Vietnamese accents
+  const cleanAscii = removeVietnameseTones(camelSeparated).toLowerCase();
+
+  // 3. Replace all non-alphanumeric characters (including .,;:_!@#$%^&*) with hyphens
   let slug = cleanAscii.replace(/[^a-z0-9]+/g, '-');
 
-  // Replace multiple consecutive hyphens with a single hyphen
+  // 4. Merge consecutive hyphens
   slug = slug.replace(/-+/g, '-');
 
-  // Trim leading and trailing hyphens
+  // 5. Trim leading and trailing hyphens
   slug = slug.replace(/^-+|-+$/g, '');
+
+  // 6. Smart word segmentation for conjoined words like "temnhan" => "tem-nhan"
+  slug = segmentCompoundWords(slug);
 
   return slug || 'image';
 }
@@ -59,12 +157,6 @@ export function getExtension(fileName: string): string {
 
 /**
  * Generate sequential names for a batch of images with SEO support.
- * Examples:
- * - basePattern = "name-card-ep-kim", count = 3
- *   => ["name-card-ep-kim", "name-card-ep-kim-2", "name-card-ep-kim-3"]
- * 
- * - basePattern = "name-card-ep-kim-1", count = 3
- *   => ["name-card-ep-kim-1", "name-card-ep-kim-2", "name-card-ep-kim-3"]
  */
 export function generateBatchNames(
   basePattern: string,
