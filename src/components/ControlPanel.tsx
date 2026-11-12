@@ -4,9 +4,11 @@ import type {
   CompressOptions, 
   ImageFormat, 
   ImageMetadata, 
-  ProcessedImageResult 
+  ProcessedImageResult,
+  DimensionUnit,
+  DpiPreset
 } from '../types';
-import { formatFileSize } from '../utils/imageProcessor';
+import { formatFileSize, convertToPixels, convertFromPixels } from '../utils/imageProcessor';
 import { 
   Download, 
   RotateCw, 
@@ -19,7 +21,9 @@ import {
   Sparkles, 
   RefreshCw, 
   Archive,
-  Edit3
+  Edit3,
+  Printer,
+  Focus
 } from 'lucide-react';
 import './ControlPanel.css';
 
@@ -104,22 +108,35 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     includeOptimizeSuffix ? (compress.enabled ? '-optimized' : '-resized') : ''
   }.${activeExt}`;
 
-  // Handle Dimension inputs with aspect ratio
-  const handleWidthChange = (w: number) => {
+  const currentUnit: DimensionUnit = resize.unit || 'px';
+  const currentDpi: DpiPreset = resize.dpi || 300;
+
+  // Display values for input based on selected unit
+  const displayWidth = currentUnit === 'px'
+    ? resize.width
+    : convertFromPixels(resize.width, currentUnit, currentDpi);
+
+  const displayHeight = currentUnit === 'px'
+    ? resize.height
+    : convertFromPixels(resize.height, currentUnit, currentDpi);
+
+  const handleDisplayWidthChange = (val: number) => {
+    const pxWidth = currentUnit === 'px' ? Math.max(1, Math.round(val)) : convertToPixels(val, currentUnit, currentDpi);
     if (resize.maintainAspectRatio && metadata.originalWidth > 0) {
       const ratio = metadata.originalHeight / metadata.originalWidth;
-      onResizeChange({ width: w, height: Math.round(w * ratio) });
+      onResizeChange({ width: pxWidth, height: Math.max(1, Math.round(pxWidth * ratio)) });
     } else {
-      onResizeChange({ width: w });
+      onResizeChange({ width: pxWidth });
     }
   };
 
-  const handleHeightChange = (h: number) => {
+  const handleDisplayHeightChange = (val: number) => {
+    const pxHeight = currentUnit === 'px' ? Math.max(1, Math.round(val)) : convertToPixels(val, currentUnit, currentDpi);
     if (resize.maintainAspectRatio && metadata.originalHeight > 0) {
       const ratio = metadata.originalWidth / metadata.originalHeight;
-      onResizeChange({ height: h, width: Math.round(h * ratio) });
+      onResizeChange({ height: pxHeight, width: Math.max(1, Math.round(pxHeight * ratio)) });
     } else {
-      onResizeChange({ height: h });
+      onResizeChange({ height: pxHeight });
     }
   };
 
@@ -304,17 +321,95 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
         {resize.enabled && (
           <div className="section-content">
+            {/* Unit & DPI Mode Bar */}
+            <div className="unit-dpi-bar">
+              <div className="unit-selector">
+                <span className="unit-title">Đơn vị:</span>
+                {(['px', 'cm', 'mm'] as DimensionUnit[]).map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    className={`unit-pill-btn ${currentUnit === u ? 'active' : ''}`}
+                    onClick={() => onResizeChange({ unit: u })}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
+
+              {currentUnit !== 'px' && (
+                <div className="dpi-selector">
+                  <Printer size={13} className="dpi-icon" />
+                  <span className="dpi-title">DPI:</span>
+                  {([72, 150, 300] as DpiPreset[]).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      className={`dpi-pill-btn ${currentDpi === d ? 'active' : ''}`}
+                      onClick={() => onResizeChange({ dpi: d })}
+                      title={d === 300 ? 'Chuẩn in ấn sắc nét chất lượng cao' : d === 72 ? 'Màn hình/Web' : 'In thường'}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Quick Print Presets when in cm/mm mode or 300 DPI */}
+            {currentUnit !== 'px' && (
+              <div className="print-presets-box">
+                <span className="print-preset-title">Mẫu kích thước chuẩn 300 DPI:</span>
+                <div className="print-preset-chips">
+                  <button
+                    type="button"
+                    className="print-chip"
+                    onClick={() => {
+                      const w = convertToPixels(9, 'cm', currentDpi);
+                      const h = convertToPixels(5.4, 'cm', currentDpi);
+                      onResizeChange({ width: w, height: h, maintainAspectRatio: false });
+                    }}
+                  >
+                    📇 Name card (9×5.4cm)
+                  </button>
+                  <button
+                    type="button"
+                    className="print-chip"
+                    onClick={() => {
+                      const w = convertToPixels(5, 'cm', currentDpi);
+                      const h = convertToPixels(5, 'cm', currentDpi);
+                      onResizeChange({ width: w, height: h, maintainAspectRatio: false });
+                    }}
+                  >
+                    🏷️ Tem vuông (5×5cm)
+                  </button>
+                  <button
+                    type="button"
+                    className="print-chip"
+                    onClick={() => {
+                      const w = convertToPixels(14.8, 'cm', currentDpi);
+                      const h = convertToPixels(21, 'cm', currentDpi);
+                      onResizeChange({ width: w, height: h, maintainAspectRatio: false });
+                    }}
+                  >
+                    📄 Tờ rơi A5
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="dimension-inputs">
               <div className="input-group">
                 <label>Rộng (W)</label>
                 <div className="input-with-unit">
                   <input
                     type="number"
-                    min="1"
-                    value={resize.width}
-                    onChange={(e) => handleWidthChange(Number(e.target.value))}
+                    min="0.1"
+                    step={currentUnit === 'px' ? '1' : '0.1'}
+                    value={displayWidth}
+                    onChange={(e) => handleDisplayWidthChange(Number(e.target.value))}
                   />
-                  <span>px</span>
+                  <span>{currentUnit}</span>
                 </div>
               </div>
 
@@ -333,21 +428,29 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <div className="input-with-unit">
                   <input
                     type="number"
-                    min="1"
-                    value={resize.height}
-                    onChange={(e) => handleHeightChange(Number(e.target.value))}
+                    min="0.1"
+                    step={currentUnit === 'px' ? '1' : '0.1'}
+                    value={displayHeight}
+                    onChange={(e) => handleDisplayHeightChange(Number(e.target.value))}
                   />
-                  <span>px</span>
+                  <span>{currentUnit}</span>
                 </div>
               </div>
             </div>
 
-            {/* Scale Presets */}
+            {/* Display actual pixels info when in cm/mm */}
+            {currentUnit !== 'px' && (
+              <div className="actual-pixels-info">
+                <span>Quy đổi: <b>{resize.width} × {resize.height} px</b> (ở {currentDpi} DPI)</span>
+              </div>
+            )}
+
+            {/* Scale Presets (including zoom up 150%, 200%) */}
             <div className="preset-buttons">
-              {[0.25, 0.5, 0.75, 1].map((scale) => (
+              {[0.5, 0.75, 1, 1.5, 2].map((scale) => (
                 <button
                   key={scale}
-                  className="preset-btn"
+                  className={`preset-btn ${scale > 1 ? 'scale-up-btn' : ''}`}
                   onClick={() => {
                     if (onScalePreset) {
                       onScalePreset(scale);
@@ -357,10 +460,57 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       onResizeChange({ width: w, height: h });
                     }
                   }}
+                  title={scale > 1 ? `Phóng to ${scale * 100}%` : `Thu nhỏ ${scale * 100}%`}
                 >
-                  {scale * 100}%
+                  {scale * 100}% {scale > 1 ? '▲' : ''}
                 </button>
               ))}
+            </div>
+
+            {/* SHARPENING & ANTI-BLUR FILTER */}
+            <div className="sharpen-control-card">
+              <div className="sharpen-header">
+                <div className="sharpen-title">
+                  <Focus size={15} className="sharpen-icon" />
+                  <span>Làm nét & Khử mờ (Sharpen)</span>
+                </div>
+                <span className={`sharpen-badge ${(resize.sharpen || 0) > 0 ? 'active' : ''}`}>
+                  {(resize.sharpen || 0) === 0 ? 'Tắt' : `${resize.sharpen}%`}
+                </span>
+              </div>
+
+              <div className="sharpen-slider-wrapper">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={resize.sharpen || 0}
+                  onChange={(e) => onResizeChange({ sharpen: Number(e.target.value) })}
+                  className="sharpen-range-slider"
+                />
+              </div>
+
+              <div className="sharpen-preset-pills">
+                {[
+                  { label: 'Gốc (0%)', val: 0 },
+                  { label: 'Nhẹ (25%)', val: 25 },
+                  { label: 'Nét (50%)', val: 50 },
+                  { label: 'Siêu nét (80%)', val: 80 },
+                ].map((preset) => (
+                  <button
+                    key={preset.val}
+                    type="button"
+                    className={`sharpen-pill ${(resize.sharpen || 0) === preset.val ? 'active' : ''}`}
+                    onClick={() => onResizeChange({ sharpen: preset.val })}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              <p className="sharpen-help-tip">
+                💡 Tăng độ nét ở viền chi tiết, giúp tem nhãn, logo và chữ in rõ cạnh hơn khi phóng to.
+              </p>
             </div>
 
             {/* Transform Controls (Rotate & Flip) */}

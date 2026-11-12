@@ -270,6 +270,7 @@ export function App() {
               flipHorizontal: updatedActiveResize.flipHorizontal,
               flipVertical: updatedActiveResize.flipVertical,
               maintainAspectRatio: updatedActiveResize.maintainAspectRatio,
+              sharpen: updatedActiveResize.sharpen,
             };
 
             // Calculate dimensions proportionally if maintaining aspect ratio and dimensions changed
@@ -338,6 +339,9 @@ export function App() {
             rotate: 0,
             flipHorizontal: false,
             flipVertical: false,
+            sharpen: 0,
+            unit: 'px',
+            dpi: 300,
           },
           compress: { ...baseCompress },
           processedResult: null,

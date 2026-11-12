@@ -2,6 +2,9 @@ export type ImageFormat = 'webp' | 'jpeg' | 'png' | 'avif';
 
 export type ResizeMethod = 'smooth' | 'pixelated';
 
+export type DimensionUnit = 'px' | 'cm' | 'mm' | 'inch';
+export type DpiPreset = 72 | 150 | 300;
+
 export interface ResizeOptions {
   enabled: boolean;
   width: number;
@@ -11,6 +14,9 @@ export interface ResizeOptions {
   rotate: 0 | 90 | 180 | 270;
   flipHorizontal: boolean;
   flipVertical: boolean;
+  sharpen: number; // 0 - 100 (0 = off)
+  unit?: DimensionUnit;
+  dpi?: DpiPreset;
 }
 
 export interface CompressOptions {

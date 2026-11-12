@@ -1,4 +1,4 @@
-import type { CompressOptions, ResizeOptions, ProcessedImageResult } from '../types';
+import type { CompressOptions, ResizeOptions, ProcessedImageResult, DimensionUnit } from '../types';
 
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -16,6 +16,93 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = (e) => reject(e);
     img.src = src;
   });
+}
+
+/**
+ * Convert real world print units (cm, mm, inch) to pixels based on target DPI (e.g. 300 DPI)
+ */
+export function convertToPixels(value: number, unit: DimensionUnit, dpi: number = 300): number {
+  if (unit === 'px') return Math.round(value);
+  if (unit === 'cm') return Math.round((value / 2.54) * dpi);
+  if (unit === 'mm') return Math.round((value / 25.4) * dpi);
+  if (unit === 'inch') return Math.round(value * dpi);
+  return Math.round(value);
+}
+
+/**
+ * Convert pixels to real world print units (cm, mm, inch) based on target DPI
+ */
+export function convertFromPixels(pixels: number, unit: DimensionUnit, dpi: number = 300): number {
+  if (unit === 'px') return pixels;
+  if (unit === 'cm') return parseFloat(((pixels / dpi) * 2.54).toFixed(2));
+  if (unit === 'mm') return parseFloat(((pixels / dpi) * 25.4).toFixed(1));
+  if (unit === 'inch') return parseFloat((pixels / dpi).toFixed(2));
+  return pixels;
+}
+
+/**
+ * High-performance 3x3 convolution sharpening filter
+ * Enhances micro-contrast, edge definition, and reduces blurriness from resizing
+ * amount: 0 to 100
+ */
+export function applySharpen(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  amount: number
+): void {
+  if (amount <= 0 || width <= 0 || height <= 0) return;
+
+  const strength = (amount / 100) * 0.9;
+  if (strength <= 0) return;
+
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const src = imgData.data;
+  const dst = new Uint8ClampedArray(src.length);
+
+  // Copy alpha and borders initially
+  dst.set(src);
+
+  const w = width;
+  const h = height;
+  const s = strength;
+  const centerWeight = 1 + 4 * s;
+
+  for (let y = 1; y < h - 1; y++) {
+    const rowOffset = y * w;
+    const topRowOffset = (y - 1) * w;
+    const botRowOffset = (y + 1) * w;
+
+    for (let x = 1; x < w - 1; x++) {
+      const idx = (rowOffset + x) * 4;
+      const topIdx = (topRowOffset + x) * 4;
+      const botIdx = (botRowOffset + x) * 4;
+      const leftIdx = (rowOffset + (x - 1)) * 4;
+      const rightIdx = (rowOffset + (x + 1)) * 4;
+
+      // Red
+      const r =
+        src[idx] * centerWeight -
+        s * (src[topIdx] + src[botIdx] + src[leftIdx] + src[rightIdx]);
+      dst[idx] = r < 0 ? 0 : r > 255 ? 255 : r;
+
+      // Green
+      const g =
+        src[idx + 1] * centerWeight -
+        s * (src[topIdx + 1] + src[botIdx + 1] + src[leftIdx + 1] + src[rightIdx + 1]);
+      dst[idx + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+
+      // Blue
+      const b =
+        src[idx + 2] * centerWeight -
+        s * (src[topIdx + 2] + src[botIdx + 2] + src[leftIdx + 2] + src[rightIdx + 2]);
+      dst[idx + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+
+      // Alpha is kept untouched from initial set()
+    }
+  }
+
+  ctx.putImageData(new ImageData(dst, width, height), 0, 0);
 }
 
 /**
@@ -104,6 +191,11 @@ export async function processImage(
   }
 
   ctx.restore();
+
+  // Apply sharpening filter if enabled (> 0)
+  if (resize.sharpen && resize.sharpen > 0) {
+    applySharpen(ctx, canvasWidth, canvasHeight, resize.sharpen);
+  }
 
   // Compress & Output format
   let mimeType = 'image/webp';
