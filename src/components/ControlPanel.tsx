@@ -27,6 +27,10 @@ interface ControlPanelProps {
   metadata: ImageMetadata;
   baseFileName: string;
   onFileNameChange: (name: string) => void;
+  onApplySeoSlug?: () => void;
+  isSeoOptimized?: boolean;
+  includeDimensionsInName: boolean;
+  onIncludeDimensionsChange: (val: boolean) => void;
   batchRenameEnabled: boolean;
   onBatchRenameToggle: (val: boolean) => void;
   includeOptimizeSuffix: boolean;
@@ -53,6 +57,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   metadata,
   baseFileName,
   onFileNameChange,
+  onApplySeoSlug,
+  isSeoOptimized = false,
+  includeDimensionsInName,
+  onIncludeDimensionsChange,
   batchRenameEnabled,
   onBatchRenameToggle,
   includeOptimizeSuffix,
@@ -88,7 +96,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       : compress.format
     : metadata.name.split('.').pop() || 'png';
 
-  const downloadFileName = `${baseFileName}${
+  const dimSuffix = includeDimensionsInName && processedResult
+    ? `-${processedResult.width}x${processedResult.height}`
+    : '';
+
+  const downloadFileName = `${baseFileName}${dimSuffix}${
     includeOptimizeSuffix ? (compress.enabled ? '-optimized' : '-resized') : ''
   }.${activeExt}`;
 
@@ -152,18 +164,36 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
         <div className="section-content">
           <div className="filename-input-group">
-            <label className="input-sublabel">Tên ảnh (vd: name-card-ep-kim):</label>
+            <div className="filename-label-row">
+              <label className="input-sublabel">Tên ảnh (hoặc từ khóa SEO):</label>
+              {onApplySeoSlug && (
+                <button
+                  type="button"
+                  className="seo-slugify-btn"
+                  onClick={onApplySeoSlug}
+                  title="Xóa dấu tiếng Việt, chuyển chữ thường và nối dấu '-' chuẩn Google Image SEO"
+                >
+                  <Sparkles size={13} />
+                  <span>Chuẩn hóa SEO</span>
+                </button>
+              )}
+            </div>
             <div className="filename-input-wrapper">
               <input
                 type="text"
                 className="filename-input"
                 value={baseFileName}
                 onChange={(e) => onFileNameChange(e.target.value)}
-                placeholder="Nhập tên ảnh..."
+                placeholder="Nhập tên ảnh hoặc từ khóa SEO..."
                 spellCheck={false}
               />
               <span className="ext-badge">.{activeExt}</span>
             </div>
+            {isSeoOptimized && baseFileName && (
+              <div className="seo-indicator">
+                <span className="seo-check-badge">✓ Chuẩn SEO Google</span>
+              </div>
+            )}
           </div>
 
           {totalImagesCount > 1 && (
@@ -207,7 +237,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   <div className="preview-chips-list">
                     {previewBatchNames.slice(0, 5).map((pName, idx) => (
                       <span key={idx} className="preview-filename-chip">
-                        <b className="chip-idx">#{idx + 1}</b> {pName}.{activeExt}
+                        <b className="chip-idx">#{idx + 1}</b> {pName}{dimSuffix}.{activeExt}
                       </span>
                     ))}
                     {previewBatchNames.length > 5 && (
@@ -219,20 +249,38 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
           )}
 
-          <div className="suffix-option-box">
-            <label className="suffix-checkbox-label">
-              <input
-                type="checkbox"
-                checked={includeOptimizeSuffix}
-                onChange={(e) => onIncludeOptimizeSuffixChange(e.target.checked)}
-              />
-              <span>Thêm hậu tố "-optimized" khi tải ảnh</span>
-            </label>
-            <span className="suffix-description">
-              {!includeOptimizeSuffix 
-                ? '✨ Đang xuất tên sạch: không có chữ "optimize"'
-                : 'Đang bật: tên file tải về sẽ thêm -optimized'}
-            </span>
+          <div className="naming-options-list">
+            <div className="suffix-option-box">
+              <label className="suffix-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={includeDimensionsInName}
+                  onChange={(e) => onIncludeDimensionsChange(e.target.checked)}
+                />
+                <span>Kèm kích thước vào tên ảnh (vd: -800x600)</span>
+              </label>
+              <span className="suffix-description">
+                {includeDimensionsInName
+                  ? 'Đang bật: tên file sẽ có thêm -[rộng]x[cao]'
+                  : 'Tùy chọn: giúp nhận biết độ phân giải của ảnh nhanh chóng'}
+              </span>
+            </div>
+
+            <div className="suffix-option-box">
+              <label className="suffix-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={includeOptimizeSuffix}
+                  onChange={(e) => onIncludeOptimizeSuffixChange(e.target.checked)}
+                />
+                <span>Thêm hậu tố "-optimized" khi tải ảnh</span>
+              </label>
+              <span className="suffix-description">
+                {!includeOptimizeSuffix 
+                  ? '✨ Đang xuất tên sạch: không có chữ "optimize"'
+                  : 'Đang bật: tên file tải về sẽ thêm -optimized'}
+              </span>
+            </div>
           </div>
         </div>
       </div>

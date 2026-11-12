@@ -4,6 +4,7 @@ import type { ImageItem } from '../types';
 export interface ZipExportOptions {
   zipFileName?: string;
   includeOptimizeSuffix?: boolean;
+  includeDimensions?: boolean;
 }
 
 export async function exportImagesAsZip(
@@ -29,17 +30,20 @@ export async function exportImagesAsZip(
       : item.name.split('.').pop() || 'png';
 
     const baseName = item.name.replace(/\.[^/.]+$/, '');
+    const dimSuffix = options?.includeDimensions && item.processedResult
+      ? `-${item.processedResult.width}x${item.processedResult.height}`
+      : '';
     const suffix = options?.includeOptimizeSuffix
       ? item.compress.enabled
         ? '-optimized'
         : '-resized'
       : '';
 
-    let finalFileName = `${baseName}${suffix}.${ext}`;
+    let finalFileName = `${baseName}${dimSuffix}${suffix}.${ext}`;
 
     if (nameCountMap[finalFileName]) {
       nameCountMap[finalFileName]++;
-      finalFileName = `${baseName}${suffix}-${nameCountMap[finalFileName]}.${ext}`;
+      finalFileName = `${baseName}${dimSuffix}${suffix}-${nameCountMap[finalFileName]}.${ext}`;
     } else {
       nameCountMap[finalFileName] = 1;
     }

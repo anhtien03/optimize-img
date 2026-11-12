@@ -12,7 +12,7 @@ import type {
 } from './types';
 import { loadImage, processImage } from './utils/imageProcessor';
 import { exportImagesAsZip } from './utils/zipUtils';
-import { generateBatchNames } from './utils/nameUtils';
+import { generateBatchNames, toSeoSlug } from './utils/nameUtils';
 import './App.css';
 
 export function App() {
@@ -23,6 +23,7 @@ export function App() {
   const [batchRenameEnabled, setBatchRenameEnabled] = useState<boolean>(true);
   const [batchPattern, setBatchPattern] = useState<string>('');
   const [includeOptimizeSuffix, setIncludeOptimizeSuffix] = useState<boolean>(false);
+  const [includeDimensionsInName, setIncludeDimensionsInName] = useState<boolean>(false);
   const [forceNumberOnFirst, setForceNumberOnFirst] = useState<boolean>(false);
 
   // Derive active item
@@ -39,6 +40,13 @@ export function App() {
     return activeItem ? activeItem.name.replace(/\.[^/.]+$/, '') : '';
   }, [activeItem]);
 
+  // Check if current base name is strictly SEO-friendly
+  const isSeoOptimized = useMemo(() => {
+    const current = batchRenameEnabled && items.length > 1 ? batchPattern : activeBaseName;
+    if (!current) return false;
+    return current === toSeoSlug(current);
+  }, [batchRenameEnabled, items.length, batchPattern, activeBaseName]);
+
   // Preview batch names for the list
   const previewBatchNames = useMemo(() => {
     if (items.length === 0) return [];
@@ -47,6 +55,44 @@ export function App() {
       (activeItem ? activeItem.name.replace(/\.[^/.]+$/, '').replace(/[-_ ]0*\d+$/, '') : 'image');
     return generateBatchNames(pattern, items.length, { forceNumberOnFirst });
   }, [batchPattern, activeItem, items.length, forceNumberOnFirst]);
+
+  // One-click SEO slugification for single or batch
+  const handleApplySeoSlug = useCallback(() => {
+    if (!activeItem) return;
+
+    if (batchRenameEnabled && items.length > 1) {
+      const currentPattern = batchPattern || activeBaseName || 'image';
+      const seoSlug = toSeoSlug(currentPattern);
+      setBatchPattern(seoSlug);
+      const batchNames = generateBatchNames(seoSlug, items.length, { forceNumberOnFirst });
+      setItems((prev) =>
+        prev.map((item, idx) => {
+          const ext = item.name.includes('.') ? item.name.split('.').pop() : '';
+          const extStr = ext ? `.${ext}` : '';
+          return {
+            ...item,
+            name: `${batchNames[idx] || seoSlug}${extStr}`,
+          };
+        })
+      );
+    } else {
+      const currentName = activeBaseName || 'image';
+      const seoSlug = toSeoSlug(currentName);
+      setItems((prev) =>
+        prev.map((item) => {
+          if (item.id === activeItem.id) {
+            const ext = item.name.includes('.') ? item.name.split('.').pop() : '';
+            const extStr = ext ? `.${ext}` : '';
+            return {
+              ...item,
+              name: `${seoSlug}${extStr}`,
+            };
+          }
+          return item;
+        })
+      );
+    }
+  }, [activeItem, activeBaseName, batchRenameEnabled, batchPattern, items.length, forceNumberOnFirst]);
 
   // Handle renaming (single or batch)
   const handleFileNameChange = useCallback(
@@ -412,13 +458,16 @@ export function App() {
     }
 
     const baseName = item.name.replace(/\.[^/.]+$/, '');
+    const dimSuffix = includeDimensionsInName && item.processedResult
+      ? `-${item.processedResult.width}x${item.processedResult.height}`
+      : '';
     const suffix = includeOptimizeSuffix
       ? item.compress.enabled
         ? '-optimized'
         : '-resized'
       : '';
 
-    link.download = `${baseName}${suffix}.${ext}`;
+    link.download = `${baseName}${dimSuffix}${suffix}.${ext}`;
     link.href = item.processedResult.dataUrl;
     link.click();
   };
@@ -432,6 +481,7 @@ export function App() {
       await exportImagesAsZip(items, undefined, {
         zipFileName: firstBase,
         includeOptimizeSuffix,
+        includeDimensions: includeDimensionsInName,
       });
     } catch (err: any) {
       console.error('Error generating zip:', err);
@@ -561,6 +611,10 @@ export function App() {
           metadata={activeMetadata}
           baseFileName={batchRenameEnabled && items.length > 1 ? batchPattern : activeBaseName}
           onFileNameChange={handleFileNameChange}
+          onApplySeoSlug={handleApplySeoSlug}
+          isSeoOptimized={isSeoOptimized}
+          includeDimensionsInName={includeDimensionsInName}
+          onIncludeDimensionsChange={setIncludeDimensionsInName}
           batchRenameEnabled={batchRenameEnabled}
           onBatchRenameToggle={handleBatchRenameToggle}
           includeOptimizeSuffix={includeOptimizeSuffix}

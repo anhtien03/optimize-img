@@ -1,6 +1,52 @@
 /**
- * Utility functions for image naming and batch sequential renaming
+ * Utility functions for image naming, SEO slugification, and batch sequential renaming
  */
+
+/**
+ * Remove Vietnamese accents / diacritics and convert to clean ASCII
+ */
+export function removeVietnameseTones(str: string): string {
+  if (!str) return '';
+  let result = str.trim();
+
+  // Convert Vietnamese 'đ' / 'Đ' to 'd' / 'D'
+  result = result.replace(/đ/g, 'd').replace(/Đ/g, 'D');
+
+  // Decompose accented characters and strip diacritical marks
+  result = result.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  return result;
+}
+
+/**
+ * Convert any string or file name into a Google Image SEO-friendly slug
+ * Rules:
+ * 1. Remove Vietnamese accents and special characters
+ * 2. Lowercase all letters
+ * 3. Replace spaces, underscores, dots, and special characters with hyphens '-'
+ * 4. Merge duplicate consecutive hyphens '--' into '-'
+ * 5. Trim leading and trailing hyphens
+ * 
+ * Examples:
+ * - "Báo Giá Thiết Kế Name Card (Đẹp Nhất) 2026.png" => "bao-gia-thiet-ke-name-card-dep-nhat-2026"
+ * - "Ảnh-chụp__Sản phẩm mới #01!" => "anh-chup-san-pham-moi-01"
+ */
+export function toSeoSlug(text: string): string {
+  if (!text) return '';
+  const withoutExt = getBaseName(text);
+  const cleanAscii = removeVietnameseTones(withoutExt).toLowerCase();
+
+  // Replace all non-alphanumeric characters with hyphens
+  let slug = cleanAscii.replace(/[^a-z0-9]+/g, '-');
+
+  // Replace multiple consecutive hyphens with a single hyphen
+  slug = slug.replace(/-+/g, '-');
+
+  // Trim leading and trailing hyphens
+  slug = slug.replace(/^-+|-+$/g, '');
+
+  return slug || 'image';
+}
 
 export function getBaseName(fileName: string): string {
   return fileName.replace(/\.[^/.]+$/, '').trim();
@@ -12,16 +58,13 @@ export function getExtension(fileName: string): string {
 }
 
 /**
- * Generate sequential names for a batch of images.
+ * Generate sequential names for a batch of images with SEO support.
  * Examples:
  * - basePattern = "name-card-ep-kim", count = 3
  *   => ["name-card-ep-kim", "name-card-ep-kim-2", "name-card-ep-kim-3"]
  * 
  * - basePattern = "name-card-ep-kim-1", count = 3
  *   => ["name-card-ep-kim-1", "name-card-ep-kim-2", "name-card-ep-kim-3"]
- * 
- * - basePattern = "name-card_01", count = 3
- *   => ["name-card_01", "name-card_02", "name-card_03"]
  */
 export function generateBatchNames(
   basePattern: string,
@@ -29,9 +72,15 @@ export function generateBatchNames(
   options?: {
     forceNumberOnFirst?: boolean;
     separator?: '-' | '_' | ' ';
+    seoOptimized?: boolean;
   }
 ): string[] {
-  const cleanBase = getBaseName(basePattern) || 'image';
+  let cleanBase = getBaseName(basePattern) || 'image';
+
+  if (options?.seoOptimized) {
+    cleanBase = toSeoSlug(cleanBase);
+  }
+
   if (count <= 0) return [];
   if (count === 1) return [cleanBase];
 
